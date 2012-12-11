@@ -1,6 +1,6 @@
 /*
  * AdFetcher.java
- * 
+ *
  * Copyright (c) 2012, MoPub Inc.
  * All rights reserved.
  *
@@ -34,14 +34,10 @@
 
 package com.mopub.mobileads;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.ref.WeakReference;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.concurrent.Executor;
+import android.content.Context;
+import android.os.AsyncTask;
+import android.os.Build;
+import android.util.Log;
 
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
@@ -55,10 +51,14 @@ import org.apache.http.params.BasicHttpParams;
 import org.apache.http.params.HttpConnectionParams;
 import org.apache.http.params.HttpParams;
 
-import android.app.Activity;
-import android.os.AsyncTask;
-import android.os.Build;
-import android.util.Log;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.concurrent.Executor;
 
 /*
  * AdFetcher is a delegate of an AdView that handles loading ad data over a
@@ -72,13 +72,13 @@ public class AdFetcher {
     private int mTimeoutMilliseconds = 10000;
     // This is equivalent to Build.VERSION_CODES.ICE_CREAM_SANDWICH
     private static final int VERSION_CODE_ICE_CREAM_SANDWICH = 14;
-    
+
     private AdView mAdView;
     private AdFetchTask mCurrentTask;
-    private String mUserAgent;  
+    private String mUserAgent;
     private long mCurrentTaskId;
     private long mLastCompletedTaskId;
-    
+
     private enum FetchStatus {
         NOT_SET,
         FETCH_CANCELLED,
@@ -86,30 +86,30 @@ public class AdFetcher {
         INVALID_SERVER_RESPONSE_NOBACKOFF,
         CLEAR_AD_TYPE
     }
-    
+
     public AdFetcher(AdView adview, String userAgent) {
         mAdView = adview;
         mUserAgent = userAgent;
         mCurrentTaskId = -1;
         mLastCompletedTaskId = -1;
     }
-    
+
     public void fetchAdForUrl(String url) {
         mCurrentTaskId++;
         Log.i("MoPub", "Fetching ad for task #" + mCurrentTaskId);
-        
+
         if (mCurrentTask != null) {
             mCurrentTask.cancel(true);
         }
-        
+
         mCurrentTask = new AdFetchTask(this);
-        
+
         if (Build.VERSION.SDK_INT >= VERSION_CODE_ICE_CREAM_SANDWICH) {
             Class<?> cls = AdFetchTask.class;
             Class<?>[] parameterTypes = {Executor.class, Object[].class};
-            
+
             String[] parameters = {url};
-            
+
             try {
                 Method method = cls.getMethod("executeOnExecutor", parameterTypes);
                 Field field = cls.getField("THREAD_POOL_EXECUTOR");
@@ -125,50 +125,50 @@ public class AdFetcher {
             mCurrentTask.execute(url);
         }
     }
-    
+
     public void cancelFetch() {
         if (mCurrentTask != null) {
             Log.i("MoPub", "Canceling fetch ad for task #" + mCurrentTaskId);
             mCurrentTask.cancel(true);
         }
     }
-    
+
     private void markTaskCompleted(long taskId) {
         if (taskId > mLastCompletedTaskId) {
             mLastCompletedTaskId = taskId;
         }
     }
-    
+
     public void cleanup() {
         cancelFetch();
-        
+
         mAdView = null;
         mUserAgent = "";
     }
-    
+
     protected void setTimeout(int milliseconds) {
         mTimeoutMilliseconds = milliseconds;
     }
-    
+
     protected int getTimeout() {
         return mTimeoutMilliseconds;
     }
-    
+
     private static class AdFetchTask extends AsyncTask<String, Void, AdFetchResult> {
         private AdFetcher mAdFetcher;
         private AdView mAdView;
         private Exception mException;
         private HttpClient mHttpClient;
         private long mTaskId;
-        
+
         private FetchStatus mFetchStatus = FetchStatus.NOT_SET;
-        
+
         private static final int MAXIMUM_REFRESH_TIME_MILLISECONDS = 600000;
         private static final double EXPONENTIAL_BACKOFF_FACTOR = 1.5;
-        
+
         private AdFetchTask(AdFetcher adFetcher) {
             mAdFetcher = adFetcher;
-            
+
             mAdView = mAdFetcher.mAdView;
             mHttpClient = getDefaultHttpClient();
             mTaskId = mAdFetcher.mCurrentTaskId;
@@ -186,11 +186,11 @@ public class AdFetcher {
             }
             return result;
         }
-        
+
         private AdFetchResult fetch(String url) throws Exception {
             HttpGet httpget = new HttpGet(url);
             httpget.addHeader("User-Agent", mAdFetcher.mUserAgent);
-            
+
             // We check to see if this AsyncTask was cancelled, as per
             // http://developer.android.com/reference/android/os/AsyncTask.html
             if (isCancelled()) {
@@ -205,7 +205,7 @@ public class AdFetcher {
 
             HttpResponse response = mHttpClient.execute(httpget);
             HttpEntity entity = response.getEntity();
-            
+
             // Client and Server HTTP errors should result in an exponential backoff
             if (response != null && response.getStatusLine().getStatusCode() >= 400) {
                 Log.d("MoPub", "MoPub server returned invalid response.");
@@ -232,7 +232,7 @@ public class AdFetcher {
                 Log.i("MoPub", "Performing custom event.");
                 Header cmHeader = response.getFirstHeader("X-Customselector");
                 return new PerformCustomEventTaskResult(mAdView, cmHeader);
-                
+
             } else if (atHeader.getValue().equals("mraid")) {
                 // Handle mraid ad type.
                 Log.i("MoPub", "Loading mraid ad");
@@ -242,7 +242,7 @@ public class AdFetcher {
                 String data = httpEntityToString(entity);
                 paramsHash.put("X-Nativeparams", data);
                 return new LoadNativeAdTaskResult(mAdView, paramsHash);
-                
+
             } else if (!atHeader.getValue().equals("html")) {
                 // Handle native SDK ad type.
                 Log.i("MoPub", "Loading native ad");
@@ -268,7 +268,7 @@ public class AdFetcher {
             String data = httpEntityToString(entity);
             return new LoadHtmlAdTaskResult(mAdView, data);
         }
-        
+
         @Override
         protected void onPostExecute(AdFetchResult result) {
             if (!isMostCurrentTask()) {
@@ -276,7 +276,7 @@ public class AdFetcher {
                 releaseResources();
                 return;
             }
-            
+
             // If cleanup() has already been called on the AdView, don't proceed.
             if (mAdView == null || mAdView.isDestroyed()) {
                 if (result != null) {
@@ -286,18 +286,18 @@ public class AdFetcher {
                 releaseResources();
                 return;
             }
-            
+
             if (result == null) {
                 if (mException != null) {
                     Log.d("MoPub", "Exception caught while loading ad: " + mException);
                 }
-                
+
                 mAdView.loadFailUrl();
-                
+
                 /*
                  * There are numerous reasons for the ad fetch to fail, but only in the specific
-                 * case of actual server failure should we exponentially back off. 
-                 * 
+                 * case of actual server failure should we exponentially back off.
+                 *
                  * Note: When we call AdView's loadFailUrl() from this block, AdView's mFailUrl
                  * will always be null, forcing a scheduled refresh. Here, we place the exponential
                  * backoff after AdView's loadFailUrl because we only want to increase refresh times
@@ -311,11 +311,11 @@ public class AdFetcher {
                 result.execute();
                 result.cleanup();
             }
-            
+
             mAdFetcher.markTaskCompleted(mTaskId);
             releaseResources();
         }
-        
+
         @Override
         protected void onCancelled() {
             if (!isMostCurrentTask()) {
@@ -323,7 +323,7 @@ public class AdFetcher {
                 releaseResources();
                 return;
             }
-            
+
             Log.d("MoPub", "Ad loading was cancelled.");
             if (mException != null) {
                 Log.d("MoPub", "Exception caught while loading ad: " + mException);
@@ -331,25 +331,25 @@ public class AdFetcher {
             mAdFetcher.markTaskCompleted(mTaskId);
             releaseResources();
         }
-        
+
         private String httpEntityToString(HttpEntity entity)
                 throws IOException {
-                
+
             InputStream inputStream = entity.getContent();
             int numberBytesRead = 0;
             StringBuffer out = new StringBuffer();
             byte[] bytes = new byte[4096];
-            
+
             while (numberBytesRead != -1) {
                 out.append(new String(bytes, 0, numberBytesRead));
                 numberBytesRead = inputStream.read(bytes);
             }
-            
+
             inputStream.close();
-            
+
             return out.toString();
         }
-        
+
         /* This helper function is called when a 4XX or 5XX error is received during an ad fetch.
          * It exponentially increases the parent AdView's refreshTime up to a specified cap.
          */
@@ -357,23 +357,23 @@ public class AdFetcher {
             if (mAdView == null) {
                 return;
             }
-            
+
             int refreshTimeMilliseconds = mAdView.getRefreshTimeMilliseconds();
-            
+
             refreshTimeMilliseconds = (int) (refreshTimeMilliseconds * EXPONENTIAL_BACKOFF_FACTOR);
             if (refreshTimeMilliseconds > MAXIMUM_REFRESH_TIME_MILLISECONDS) {
                 refreshTimeMilliseconds = MAXIMUM_REFRESH_TIME_MILLISECONDS;
             }
-            
+
             mAdView.setRefreshTimeMilliseconds(refreshTimeMilliseconds);
         }
-        
+
         private void releaseResources() {
             mAdFetcher = null;
             mException = null;
             mFetchStatus = FetchStatus.NOT_SET;
         }
-        
+
         private DefaultHttpClient getDefaultHttpClient() {
             HttpParams httpParameters = new BasicHttpParams();
             int timeoutMilliseconds = mAdFetcher.getTimeout();
@@ -390,7 +390,7 @@ public class AdFetcher {
 
             return new DefaultHttpClient(httpParameters);
         }
-        
+
         private void shutdownHttpClient() {
             if (mHttpClient != null) {
                 ClientConnectionManager manager = mHttpClient.getConnectionManager();
@@ -400,7 +400,7 @@ public class AdFetcher {
                 mHttpClient = null;
             }
         }
-        
+
         private boolean isMostCurrentTask() {
             return mTaskId >= mAdFetcher.mLastCompletedTaskId;
         }
@@ -408,82 +408,83 @@ public class AdFetcher {
 
     private static abstract class AdFetchResult {
         WeakReference<AdView> mWeakAdView;
-        
+
         public AdFetchResult(AdView adView) {
             mWeakAdView = new WeakReference<AdView>(adView);
         }
-        
+
         abstract void execute();
-        
+
         /* The AsyncTask thread pool often appears to keep references to these
          * objects, preventing GC. This method should be used to release
          * resources to mitigate the GC issue.
          */
         abstract void cleanup();
     }
-    
+
     private static class PerformCustomEventTaskResult extends AdFetchResult {
         protected Header mHeader;
-        
+
         public PerformCustomEventTaskResult(AdView adView, Header header) {
             super(adView);
             mHeader = header;
         }
-        
+
         public void execute() {
             AdView adView = mWeakAdView.get();
             if (adView == null || adView.isDestroyed()) {
                 return;
             }
-            
+
             adView.setIsLoading(false);
             MoPubView mpv = adView.mMoPubView;
-            
+
             if (mHeader == null) {
                 Log.i("MoPub", "Couldn't call custom method because the server did not specify one.");
                 mpv.adFailed();
                 return;
             }
-            
+
             String methodName = mHeader.getValue();
             Log.i("MoPub", "Trying to call method named " + methodName);
-            
-            Class<? extends Activity> c;
+
+            Class<?> c;
             Method method;
-            Activity userActivity = mpv.getActivity();
+            Object customNetworkListener = mpv.getCustomNetworkListener();
+
             try {
-                c = userActivity.getClass();
+                c = customNetworkListener.getClass();
                 method = c.getMethod(methodName, MoPubView.class);
-                method.invoke(userActivity, mpv);
+                method.invoke(customNetworkListener, mpv);
             } catch (NoSuchMethodException e) {
                 Log.d("MoPub", "Couldn't perform custom method named " + methodName +
-                        "(MoPubView view) because your activity class has no such method");
+                        "(MoPubView view) because your custom network listener class has no such method");
                 return;
             } catch (Exception e) {
                 Log.d("MoPub", "Couldn't perform custom method named " + methodName);
                 return;
             }
         }
-        
+
         public void cleanup() {
             mHeader = null;
         }
     }
-    
+
     private static class LoadNativeAdTaskResult extends AdFetchResult {
         protected HashMap<String, String> mParamsHash;
-        
+
         private LoadNativeAdTaskResult(AdView adView, HashMap<String, String> hash) {
             super(adView);
             mParamsHash = hash;
         }
-        
+
         public void execute() {
             AdView adView = mWeakAdView.get();
             if (adView == null || adView.isDestroyed()) {
                 return;
             }
-            
+
             adView.setIsLoading(false);
             MoPubView mpv = adView.mMoPubView;
             mpv.loadNativeSDK(mParamsHash);
@@ -493,30 +494,30 @@ public class AdFetcher {
             mParamsHash = null;
         }
     }
-    
+
     private static class LoadHtmlAdTaskResult extends AdFetchResult {
         protected String mData;
-        
+
         private LoadHtmlAdTaskResult(AdView adView, String data) {
             super(adView);
             mData = data;
         }
-        
+
         public void execute() {
             AdView adView = mWeakAdView.get();
             if (adView == null || adView.isDestroyed()) {
                 return;
             }
-            
+
             if (mData == null) {
                 return;
             }
-            
+
             adView.setResponseString(mData);
             adView.loadDataWithBaseURL("http://" + adView.getServerHostname() + "/", mData,
                     "text/html", "utf-8", null);
         }
-        
+
         public void cleanup() {
             mData = null;
         }
